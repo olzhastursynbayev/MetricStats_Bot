@@ -228,49 +228,33 @@ def run_flask_thread():
 if __name__ == "__main__":
     from flask import request
 
-    async def main():
-        # создаем Telegram-приложение
-        application = (
-            ApplicationBuilder()
-            .token(BOT_TOKEN)
-            .updater(None)
-            .build()
-        )
+    # создаём Telegram-приложение
+    application = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .updater(None)
+        .build()
+    )
 
-        application.add_handler(CommandHandler("start", start_cmd))
-        application.add_handler(CommandHandler("connect", connect_cmd))
-        application.add_handler(CommandHandler("report", report_cmd))
-        application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(CommandHandler("start", start_cmd))
+    application.add_handler(CommandHandler("connect", connect_cmd))
+    application.add_handler(CommandHandler("report", report_cmd))
+    application.add_handler(CallbackQueryHandler(button_handler))
 
-        # Устанавливаем Webhook на Render-домен
-        webhook_url = f"https://metricstats-bot.onrender.com/{BOT_TOKEN}"
-        await application.bot.set_webhook(webhook_url)
-        logger.info(f"✅ Webhook установлен: {webhook_url}")
+    loop = asyncio.get_event_loop()
 
-        # Создаём отдельный event loop
-        loop = asyncio.get_event_loop()
+    # === Flask endpoint для Telegram ===
+    @app.route(f"/{BOT_TOKEN}", methods=["POST"])
+    def telegram_webhook():
+        try:
+            data = request.get_json(silent=True, force=True)
+            if not data:
+                logger.warning("⚠️ Telegram прислал пустой update")
+                return "No data", 200
 
-     @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def telegram_webhook():
-    try:
-        data = request.get_json(force=True, silent=True)
-        if not data:
-            logger.warning("⚠️ Telegram прислал пустой update")
-            return "No data", 200
+            logger.info(f"📩 Получен update: {data}")
+            update = Update.de_json(data, application.bot)
+            asyncio.run_coroutine_threadsafe(application.process_update(update), loop)
+            return "OK", 200
 
-        logger.info(f"📩 Получен update: {data}")
-
-        update = Update.de_json(data, application.bot)
-        # безопасно отправляем в event loop
-        future = asyncio.run_coroutine_threadsafe(
-            application.process_update(update),
-            asyncio.get_event_loop()
-        )
-        future.result(timeout=10)  # ждём выполнение, чтобы отловить исключения
-        return "OK", 200
-
-    except Exception as e:
-        import traceback
-        logger.error("❌ Ошибка в webhook:\n" + traceback.format_exc())
-        return f"Error: {e}", 500
-
+        ex
