@@ -253,9 +253,16 @@ def run_flask_thread():
     app.run(host="0.0.0.0", port=PORT, threaded=True, use_reloader=False)
 
 if __name__ == "__main__":
-    # поднимем Flask в отдельном потоке, чтобы Render видел открытый порт
+    # Запускаем Flask в отдельном потоке (для OAuth)
     Thread(target=run_flask_thread, daemon=True).start()
+
+    # Запускаем Telegram-бота в основном потоке (асинхронно)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        asyncio.run(start_application())
+        loop.run_until_complete(start_application())
     except KeyboardInterrupt:
         logger.info("Shutting down")
+    finally:
+        loop.close()
+
