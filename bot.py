@@ -23,7 +23,7 @@ logging.basicConfig(
 user_tokens = {}
 
 # ====== Токен Telegram ======
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # ====== URL для авторизации в Facebook ======
 REDIRECT_URI = "https://твоя-ссылка-на-render.onrender.com/oauth/callback"
