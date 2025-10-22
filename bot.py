@@ -226,16 +226,16 @@ def run_flask_thread():
 
 
 if __name__ == "__main__":
-    # Flask запускается в отдельном потоке
+    # Flask запускается в отдельном потоке (для OAuth и health-check)
     Thread(target=run_flask_thread, daemon=True).start()
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
     async def main():
+        from flask import request
+
         application = (
             ApplicationBuilder()
             .token(BOT_TOKEN)
+            .updater(None)  # отключаем polling
             .build()
         )
 
@@ -244,19 +244,20 @@ if __name__ == "__main__":
         application.add_handler(CommandHandler("report", report_cmd))
         application.add_handler(CallbackQueryHandler(button_handler))
 
-        await application.initialize()
-        await application.start()
-        logger.info("🤖 Telegram bot started successfully")
+        # Устанавливаем Webhook на Render-домен
+        webhook_url = f"https://metricstats-bot.onrender.com/{BOT_TOKEN}"
+        await application.bot.set_webhook(webhook_url)
+        logger.info(f"✅ Webhook установлен: {webhook_url}")
 
-        try:
-            await asyncio.Event().wait()  # держим процесс живым
-        finally:
-            await application.stop()
-            await application.shutdown()
+        # Добавляем Flask endpoint для Telegram
+        @app.post(f"/{BOT_TOKEN}")
+        def telegram_webhook():
+            update = Update.de_json(request.get_json(force=True), application.bot)
+            asyncio.create_task(application.process_update(update))
+            return "OK", 200
 
-    try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
-    finally:
-        loop.close()
+        logger.info("🤖 Telegram webhook mode started")
+        await asyncio.Event().wait()  # держим процесс живым
+
+    asyncio.run(main())
+
