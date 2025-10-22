@@ -226,12 +226,10 @@ def run_flask_thread():
 
 
 if __name__ == "__main__":
-    # Flask запускается в отдельном потоке (для OAuth и health-check)
-    Thread(target=run_flask_thread, daemon=True).start()
+    from flask import request
 
     async def main():
-        from flask import request
-
+        # создаём Telegram-приложение
         application = (
             ApplicationBuilder()
             .token(BOT_TOKEN)
@@ -249,15 +247,17 @@ if __name__ == "__main__":
         await application.bot.set_webhook(webhook_url)
         logger.info(f"✅ Webhook установлен: {webhook_url}")
 
-        # Добавляем Flask endpoint для Telegram
+        # === Flask endpoint для Telegram ===
         @app.post(f"/{BOT_TOKEN}")
         def telegram_webhook():
             update = Update.de_json(request.get_json(force=True), application.bot)
             asyncio.create_task(application.process_update(update))
             return "OK", 200
 
+        # теперь можно запускать Flask после того, как маршрут зарегистрирован
+        Thread(target=run_flask_thread, daemon=True).start()
+
         logger.info("🤖 Telegram webhook mode started")
         await asyncio.Event().wait()  # держим процесс живым
 
     asyncio.run(main())
-
