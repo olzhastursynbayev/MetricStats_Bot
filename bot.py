@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 import asyncio
 import requests
@@ -9,22 +8,25 @@ from threading import Thread
 from flask import Flask, request, redirect
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
-    ContextTypes
+    ContextTypes,
 )
 
 # ====== Логирование ======
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # ====== Конфиг из окружения ======
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 FB_APP_ID = os.getenv("FB_APP_ID")
 FB_APP_SECRET = os.getenv("FB_APP_SECRET")
-REDIRECT_URI = os.getenv("REDIRECT_URI")  # например https://yourapp.onrender.com/oauth/callback
+REDIRECT_URI = os.getenv("REDIRECT_URI")  # напр. https://metricstats-bot.onrender.com/oauth/callback
 PORT = int(os.getenv("PORT", 5000))
 
 if not BOT_TOKEN:
@@ -118,11 +120,7 @@ def oauth_callback():
         logger.exception("Failed saving token for state=%s: %s", state, e)
         return "Failed to save token", 500
 
-    # notify user by redirecting them back to t.me with start param (optional)
-    # redirect back to bot chat (user will click start payload)
-    bot_username = None  # optional: set BOT_USERNAME env var if you want direct t.me redirect
-    if os.getenv("BOT_USERNAME"):
-        bot_username = os.getenv("BOT_USERNAME")
+    bot_username = os.getenv("BOT_USERNAME")  # optional
     if bot_username:
         return redirect(f"https://t.me/{bot_username}?start=connected_{tg_id}")
     else:
@@ -146,7 +144,6 @@ def make_auth_url(telegram_id: int) -> str:
         "response_type": "code",
         "state": str(telegram_id)
     }
-    # safe quoting
     return "https://www.facebook.com/v19.0/dialog/oauth?" + "&".join(
         f"{k}={urllib.parse.quote(v)}" for k, v in params.items()
     )
@@ -231,24 +228,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ====== Run application (async) ======
 async def start_application():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application: Application = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .build()
+    )
 
     application.add_handler(CommandHandler("start", start_cmd))
     application.add_handler(CommandHandler("connect", connect_cmd))
     application.add_handler(CommandHandler("report", report_cmd))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    # run polling (single instance). If you prefer webhook — we can switch later.
-    await application.run_polling()
+    # В v21 используем application.initialize()/start()/updater.start_polling() больше нет.
+    await application.initialize()
+    await application.start()
+    logger.info("Telegram bot polling started")
+    # run until Ctrl+C
+    await application.running_until_cancelled()
+    await application.stop()
+    await application.shutdown()
 
 def run_flask_thread():
-    # Use threaded and disable reloader for Render stability
+    # Flask нужен Render'у для проверки порта и для OAuth callback
     app.run(host="0.0.0.0", port=PORT, threaded=True, use_reloader=False)
 
 if __name__ == "__main__":
-    # start flask in background thread so Render sees open port for OAuth callback
+    # поднимем Flask в отдельном потоке, чтобы Render видел открытый порт
     Thread(target=run_flask_thread, daemon=True).start()
-    # start telegram bot (async)
     try:
         asyncio.run(start_application())
     except KeyboardInterrupt:
