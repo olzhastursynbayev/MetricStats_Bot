@@ -20,8 +20,10 @@ def home():
 @app_web.route('/oauth/callback')
 def oauth_callback():
     code = request.args.get("code")
-    state = json.loads(urllib.parse.unquote(request.args.get("state", "{}")))
-    telegram_id = state.get("telegram_id")
+    telegram_id = request.args.get("state")  # Получаем telegram_id напрямую
+
+    if not telegram_id:
+        return "❌ Ошибка: не удалось получить Telegram ID."
 
     # Обмен кода на токен
     resp = requests.get(
@@ -36,7 +38,7 @@ def oauth_callback():
     data = resp.json()
     token = data.get("access_token")
     if token:
-        user_tokens[telegram_id] = token
+        user_tokens[int(telegram_id)] = token
         return "✅ Facebook подключен! Вернитесь в Telegram."
     else:
         return f"❌ Ошибка авторизации: {data}"
@@ -55,35 +57,12 @@ def get_auth_url(telegram_id: int):
         "redirect_uri": os.getenv("REDIRECT_URI"),
         "scope": "ads_read,ads_management,read_insights",
         "response_type": "code",
-        "state": json.dumps({"telegram_id": telegram_id})
+        # теперь передаём просто ID, без JSON
+        "state": str(telegram_id)
     }
     base = "https://www.facebook.com/v19.0/dialog/oauth"
     return base + "?" + "&".join(f"{k}={urllib.parse.quote(v)}" for k, v in params.items())
 
 async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = get_auth_url(update.message.from_user.id)
-    await update.message.reply_text(f"🔗 Подключи Facebook Ads: {url}")
-
-async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.message.from_user.id
-    token = user_tokens.get(uid)
-    if not token:
-        await update.message.reply_text("❌ Сначала подключи Facebook через /connect")
-        return
-    resp = requests.get(
-        "https://graph.facebook.com/v19.0/me/adaccounts?fields=name,account_id",
-        params={"access_token": token}
-    )
-    await update.message.reply_text(f"📊 Твои рекламные аккаунты:\n{resp.text}")
-
-def run_bot():
-    TOKEN = os.getenv("BOT_TOKEN")
-    tg_app = ApplicationBuilder().token(TOKEN).build()
-    tg_app.add_handler(CommandHandler("start", start))
-    tg_app.add_handler(CommandHandler("connect", connect))
-    tg_app.add_handler(CommandHandler("report", report))
-    tg_app.run_polling()
-
-if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()
-    run_bot()
+    await update.message.reply
