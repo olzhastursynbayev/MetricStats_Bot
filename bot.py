@@ -12,6 +12,8 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes
 )
+from flask import Flask, request
+from threading import Thread
 
 # ====== Настройки логирования ======
 logging.basicConfig(
@@ -23,7 +25,7 @@ logging.basicConfig(
 user_tokens = {}
 
 # ====== Токен Telegram ======
-BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # ====== URL для авторизации в Facebook ======
 REDIRECT_URI = "https://твоя-ссылка-на-render.onrender.com/oauth/callback"
@@ -118,10 +120,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, parse_mode="Markdown")
 
 
-# ====== Фейковая обработка колбэка (на проде — реальная авторизация) ======
-# 👉 Этот блок нужно будет заменить на настоящий OAuth, если ещё не сделано
-from flask import Flask, request
-
+# ====== Flask OAuth Callback ======
 app = Flask(__name__)
 
 @app.route("/oauth/callback")
@@ -153,7 +152,6 @@ def fb_callback():
     fb_user_id = user_info.get("id")
 
     # ⚠️ Для теста: сохраняем токен на 1 пользователя
-    # На проде нужно связать fb_user_id с Telegram user_id
     user_tokens[fb_user_id] = access_token
 
     return "✅ Авторизация прошла успешно! Теперь вернись в Telegram и введи /report"
@@ -161,7 +159,7 @@ def fb_callback():
 
 # ====== Запуск бота ======
 def run_bot():
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("connect", connect))
@@ -172,7 +170,6 @@ def run_bot():
 
 
 if __name__ == "__main__":
-    from threading import Thread
     # Flask в отдельном потоке
     Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))).start()
     # Telegram бот
