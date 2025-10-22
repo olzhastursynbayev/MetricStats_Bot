@@ -250,23 +250,27 @@ if __name__ == "__main__":
         # Создаём отдельный event loop
         loop = asyncio.get_event_loop()
 
-        # === Flask endpoint для Telegram ===
-        @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-        def telegram_webhook():
-            try:
-                data = request.get_json(force=True)
-                update = Update.de_json(data, application.bot)
-                # Запускаем обработку в event loop бота
-                asyncio.run_coroutine_threadsafe(application.process_update(update), loop)
-                return "OK", 200
-            except Exception as e:
-                logger.exception(f"❌ Error processing update: {e}")
-                return "Error", 500
+     @app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
+    try:
+        data = request.get_json(force=True, silent=True)
+        if not data:
+            logger.warning("⚠️ Telegram прислал пустой update")
+            return "No data", 200
 
-        # Запускаем Flask в отдельном потоке
-        Thread(target=run_flask_thread, daemon=True).start()
+        logger.info(f"📩 Получен update: {data}")
 
-        logger.info("🤖 Telegram webhook mode started")
-        await asyncio.Event().wait()  # держим процесс живым
+        update = Update.de_json(data, application.bot)
+        # безопасно отправляем в event loop
+        future = asyncio.run_coroutine_threadsafe(
+            application.process_update(update),
+            asyncio.get_event_loop()
+        )
+        future.result(timeout=10)  # ждём выполнение, чтобы отловить исключения
+        return "OK", 200
 
-    asyncio.run(main())
+    except Exception as e:
+        import traceback
+        logger.error("❌ Ошибка в webhook:\n" + traceback.format_exc())
+        return f"Error: {e}", 500
+
